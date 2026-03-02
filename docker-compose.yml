@@ -1,0 +1,111 @@
+services:
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=finance_db
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=pass
+
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+
+  app:
+    build:
+      context: ./moneycounter
+      dockerfile: Dockerfile
+    volumes:
+      - ./moneycounter:/app
+      - temp_voice:/app/temp_voice # Общая папка для аудио
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    environment:
+      - DATABASE_URL=postgres://admin:pass@db:5432/finance_db
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_URL=http://ollama:11434
+      - WHISPER_URL=http://whisper:9000/asr
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    build:
+      context: ./moneycounter
+      dockerfile: Dockerfile
+    command: celery -A moneycounter worker --loglevel=info
+    volumes:
+      - ./moneycounter:/app
+      - temp_voice:/app/temp_voice # Воркер видит те же файлы
+    depends_on:
+      - redis
+      - app
+      - ollama
+      - whisper
+    environment:
+      - DATABASE_URL=postgres://admin:pass@db:5432/finance_db
+      - REDIS_URL=redis://redis:6379/0
+      - BOT_TOKEN=${BOT_TOKEN}
+
+  bot:
+    build:
+      context: ./telegram_bot
+      dockerfile: Dockerfile
+    volumes:
+      - ./telegram_bot:/app
+      - temp_voice:/app/temp_voice # Бот сохраняет файлы сюда
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - API_BASE_URL=http://app:8000
+      - WEBAPP_URL=${WEBAPP_URL}
+      - PYTHONPATH=/app
+    depends_on:
+      - app
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    environment:
+      - ASR_MODEL=base
+      - ASR_ENGINE=openai_whisper
+      - ASR_MODEL_PATH=/root/.cache/whisper
+    volumes:
+      - ./whisper_cache:/root/.cache/whisper
+    ports:
+      - "9000:9000"
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_cache:/root/.ollama
+    ports:
+      - "11434:11434"
+    # Настройка GPU для твоей NVIDIA 6GB
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    entrypoint: /bin/sh
+    command: 
+      - "-c"
+      - |
+        ollama serve & 
+        sleep 5
+        if ! ollama list | grep -q "qwen2.5:3b"; then
+          echo "Model not found, pulling..."
+          ollama pull qwen2.5:3b
+        else
+          echo "Model qwen2.5:3b already exists."
+        fi
+        wait
+
+volumes:
+  postgres_data:
+  ollama_cache:
+  temp_voice: # Объявляем общую область для временных файлов
+  redis_data:

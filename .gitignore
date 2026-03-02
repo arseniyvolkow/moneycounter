@@ -1,0 +1,8 @@
+.env
+whisper_cache
+.venv
+.continue
+.local_llm
+ngrok
+tmp
+temp_voice

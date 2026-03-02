@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - MoneyCounter</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #000);
+            padding: 20px;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100vh;
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            box-sizing: border-box;
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            border-radius: 8px;
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-text-color, #000);
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #fff);
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:disabled {
+            opacity: 0.7;
+        }
+        .error {
+            color: #ff3b30;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Login</h2>
+    <div class="form-group">
+        <input type="text" id="username" placeholder="Username" autocomplete="username">
+    </div>
+    <div class="form-group">
+        <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+    </div>
+    <div id="errorMsg" class="error"></div>
+    <button id="loginBtn">Log In</button>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const loginBtn = document.getElementById('loginBtn');
+        const errorMsg = document.getElementById('errorMsg');
+
+        loginBtn.addEventListener('click', async () => {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            if (!username || !password) {
+                errorMsg.textContent = "Please enter both username and password.";
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = "Logging in...";
+            errorMsg.textContent = "";
+
+            try {
+                const response = await fetch('/api/auth/token/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    // Send the tokens back to the bot
+                    tg.sendData(JSON.stringify({
+                        type: 'LOGIN_SUCCESS',
+                        access: data.access,
+                        refresh: data.refresh,
+                        username: username
+                    }));
+                } else {
+                    errorMsg.textContent = "Invalid credentials. Please try again.";
+                    tg.HapticFeedback.notificationOccurred('error');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = "Log In";
+                }
+            } catch (e) {
+                console.error(e);
+                errorMsg.textContent = "Connection error.";
+                loginBtn.disabled = false;
+                loginBtn.textContent = "Log In";
+            }
+        });
+    </script>
+</body>
+</html>

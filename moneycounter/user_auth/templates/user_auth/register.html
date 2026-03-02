@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - MoneyCounter</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #000);
+            padding: 20px;
+            margin: 0;
+        }
+        h2 {
+            text-align: center;
+            color: var(--tg-theme-text-color, #000);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            border-radius: 8px;
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-text-color, #000);
+            font-size: 16px;
+        }
+        input:focus {
+            outline: none;
+            border-color: var(--tg-theme-button-color, #2481cc);
+        }
+        #registerBtn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #fff);
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        #registerBtn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #ff3b30;
+            font-size: 14px;
+            margin-top: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h2>Create Account</h2>
+    <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="Enter username">
+    </div>
+    <div class="form-group">
+        <label for="email">Email (optional)</label>
+        <input type="email" id="email" placeholder="Enter email">
+    </div>
+    <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter password">
+    </div>
+    <div id="errorMsg" class="error"></div>
+    <button id="registerBtn">Register</button>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const registerBtn = document.getElementById('registerBtn');
+        const errorMsg = document.getElementById('errorMsg');
+
+        registerBtn.addEventListener('click', async () => {
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            if (!username || !password) {
+                errorMsg.textContent = "Username and password are required.";
+                return;
+            }
+
+            registerBtn.disabled = true;
+            registerBtn.textContent = "Registering...";
+            errorMsg.textContent = "";
+
+            try {
+                // Determine the backend URL relative to the current page
+                // The API endpoint is at /api/auth/register/
+                const response = await fetch('/api/auth/register/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password,
+                        email: email,
+                        base_currency: 'USD' // Default, can be extended later
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    tg.showPopup({
+                        title: 'Success',
+                        message: 'Registration successful! You can now log in.',
+                        buttons: [{type: 'ok'}]
+                    }, () => {
+                        tg.close();
+                    });
+                } else {
+                    const errorData = await response.json();
+                    let msg = "Registration failed.";
+                    if (errorData.username) msg = errorData.username[0];
+                    else if (errorData.password) msg = errorData.password[0];
+                    else if (errorData.detail) msg = errorData.detail;
+                    
+                    errorMsg.textContent = msg;
+                    tg.HapticFeedback.notificationOccurred('error');
+                }
+            } catch (e) {
+                errorMsg.textContent = "Network error. Please try again.";
+                console.error(e);
+            } finally {
+                registerBtn.disabled = false;
+                registerBtn.textContent = "Register";
+            }
+        });
+    </script>
+</body>
+</html>
