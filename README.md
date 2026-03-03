@@ -1,125 +1,88 @@
-# MoneyCounter
+# 💰 MoneyCounter
 
-MoneyCounter is a smart, AI-powered personal finance tracking application. The platform leverages a Django-based REST API backend integrated with AI microservices (Whisper for voice-to-text, Ollama for LLM-based parsing) and an Aiogram-based Telegram Bot frontend.
+MoneyCounter is a smart, AI-powered personal finance tracking application designed to make expense logging as easy as sending a message. It features a Django REST API backend, AI-driven microservices (Whisper & Ollama), and an interactive Telegram Bot frontend.
 
 ## 🌟 Key Features
 
-* **Voice & Text Input:** Send a quick text like "Dinner 1200" or a voice message like "Spent 500 on groceries." The system automatically transcribes and categorizes your transaction using AI.
-* **Smart Categorization:** Uses an LLM (Language Model via LangChain + Ollama) to parse natural language inputs into structured transaction data, mapping them to your personalized categories.
-* **Multi-Account Support:** Track balances across multiple accounts and easily perform transfers between them.
-* **Telegram Mini App Integration:** Seamless registration and login directly within Telegram using the Telegram WebApp platform.
-* **Analytics & Reporting:** View your income, expenses, and net cash flow directly inside the bot with weekly or monthly summaries.
-* **Asynchronous Processing:** Voice parsing and LLM invocations are handled as background tasks by Celery and Redis, ensuring the bot remains snappy.
+*   **🗣️ Voice & 📝 Text Input**: Log transactions effortlessly by sending a voice message or a quick text like *"Dinner 1200"* or *"Spent 500 on groceries."*
+*   **🤖 AI-Powered Categorization**: Uses a local LLM (**Ollama/Qwen2.5**) to parse natural language, extract amounts, and intelligently map them to categories using **fuzzy string matching**.
+*   **💳 Multi-Account & Multi-Currency**: Track balances across multiple accounts (e.g., Cash, Bank, Savings) with support for different currencies.
+*   **📊 Smart Analytics**: View instant summaries of your income and expenses for the past week or month directly in Telegram.
+*   **🔄 Asynchronous Processing**: Heavy AI workloads (STT and LLM) are handled as background tasks by **Celery & Redis**, ensuring the bot interface remains responsive.
+*   **📁 Automatic File Management**: Temporary voice files are automatically processed and cleaned up after transcription.
+
+---
+
+## 🧠 Core Concepts
+
+### AI Parsing Workflow
+1.  **Input**: User sends a voice or text message to the Telegram Bot.
+2.  **Transcription**: For voice, the **Whisper API** transcribes audio to text.
+3.  **Extraction**: The text is sent to a **Qwen2.5:3b** model via **LangChain**. The LLM extracts the `amount`, `currency`, `category`, and `description` in a structured JSON format.
+4.  **Refinement**: The extracted category is matched against the user's actual database categories using **Fuzzy Matching** (`thefuzz`) to ensure data integrity.
+5.  **Storage**: The transaction is saved, and the user receives a confirmation message.
+
+### Background Tasks
+All AI interactions are offloaded to **Celery** workers. This allows the bot to acknowledge your message immediately ("Processing...") while the transcription and parsing happen in the background, notifying you once the transaction is saved.
 
 ---
 
 ## 🏗️ Architecture
 
-The project is divided into several main components:
-
-### 1. Backend (`moneycounter/`)
-
-Built with **Django** and **Django REST Framework (DRF)**.
-
-* **`finance/`**: Manages the core business logic—Accounts, Categories, Transactions, Subscriptions, and Financial Goals. Includes analytical views and API endpoints.
-* **`user_auth/`**: Custom user model with base currency preferences and JWT authentication endpoints.
-* **`ai_services/`**:
-  * **LLM Service**: Connects to a local Ollama instance (default `qwen2.5:3b`) using Langchain to extract amounts, categories, and descriptions from natural text.
-  * **STT Service**: Connects to a Whisper API to transcribe `.ogg` voice notes sent via Telegram.
-  * **Tasks**: Celery tasks (`process_voice_transaction_task`, `process_text_transaction_task`) to perform heavy AI workloads without blocking the main API.
+### 1. Backend API (`moneycounter/`)
+Powered by **Django** & **DRF**.
+*   **`finance/`**: Core logic for Accounts, Transactions, and Categories. Includes models for `Subscriptions` and `FinancialGoal` for future expansion.
+*   **`user_auth/`**: Custom user management with JWT authentication and base currency preferences.
+*   **`ai_services/`**: Integration layer for Ollama (LLM) and Whisper (STT).
 
 ### 2. Telegram Bot (`telegram_bot/`)
-
-Built with **Aiogram 3**.
-
-* Acts as the primary user interface.
-* Uses **FSM (Finite State Machine)** backed by Redis for complex conversational flows (e.g., editing transactions, adding accounts, transferring money).
-* Consumes the Django REST API through dedicated service classes (`services/`).
-* Uses **Auth Middleware** to securely inject access tokens to authorized users.
+Powered by **Aiogram 3**.
+*   **State Management**: Uses Redis-backed FSM for secure user sessions.
+*   **Hierarchical Menus**: Interactive reply keyboards for navigating between Transactions, Analytics, and Settings.
+*   **Service Layer**: Clean separation between bot handlers and API communication.
 
 ---
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Quick Start with Docker (Recommended)
 
-* Python 3.10+
-* Redis (for Celery broker & Aiogram FSM)
-* [Ollama](https://ollama.ai/) running locally with the `qwen2.5:3b` model (or configure a different model).
-* A running [Whisper ASR web service](https://github.com/ahmetzan/whisper-asr-webservice) (or similar).
+The easiest way to run MoneyCounter is using Docker Compose. This spins up the database, Redis, Django API, Celery worker, Telegram bot, and AI services (Ollama and Whisper).
 
-### 1. Environment Variables
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/MoneyCounter.git
+    cd MoneyCounter
+    ```
 
-Create a `.env` file in the root directory (refer to `.env.example` if available). Example:
+2.  **Environment Variables:**
+    ```bash
+    cp .env.example .env
+    # Edit .env with your BOT_TOKEN and WEBAPP_URL
+    ```
 
-```env
-# Bot Setup
-BOT_TOKEN=your_telegram_bot_token
-API_BASE_URL=http://localhost:8000
-WEBAPP_URL=https://your-ngrok-url.ngrok.io  # Important for Telegram Mini App
-
-# Django Setup
-SECRET_KEY=your_django_secret
-DEBUG=True
-```
-
-### 2. Backend Setup
-
-```bash
-cd moneycounter
-# Install dependencies (assuming a shared venv or pip install -r requirements.txt)
-pip install -r requirements.txt
-
-# Apply migrations
-python manage.py migrate
-
-# Create a superuser
-python manage.py createsuperuser
-
-# Run the Django dev server
-python manage.py runserver
-```
-
-### 3. Celery Worker Setup
-
-In a new terminal window:
-
-```bash
-cd moneycounter
-# Run Celery worker to process AI tasks
-celery -A moneycounter worker -l info
-```
-
-### 4. Telegram Bot Setup
-
-In another terminal window:
-
-```bash
-cd telegram_bot
-# Install dependencies if not already done
-pip install -r requirements.txt
-
-# Run the bot
-python bot.py
-```
+3.  **Run with Docker Compose:**
+    ```bash
+    docker-compose up --build
+    ```
+    *Note: The first run will download the Whisper model and the Qwen2.5:3b model (approx. 2-4GB).*
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Backend API**: Python, Django, Django REST Framework, SimpleJWT.
-* **Background Tasks**: Celery, Redis.
-* **AI Integration**: LangChain, Ollama (`qwen2.5:3b`), Whisper API.
-* **Bot Frontend**: Python, Aiogram 3.x, Telegram WebApp.
-* **String Matching**: `thefuzz` (for mapping LLM category outputs strictly to DB categories).
+*   **Backend**: Python, Django, DRF, SimpleJWT, Celery, Redis.
+*   **AI/LLM**: LangChain, Ollama (`qwen2.5:3b`), OpenAI Whisper.
+*   **Bot**: Aiogram 3.x, Pydantic v2.
+*   **Database**: PostgreSQL 15, `dj-database-url`.
+*   **Utilities**: `thefuzz` (fuzzy matching), `requests`.
 
 ---
 
 ## 📋 TODO / Future Improvements
 
-* [ ] **Recalculate all transactions into base currency**: Now its just gives you sum of all your transactions and if u add transactions in different currencies it will just calculate it as is.
-* [ ] **Every n-time currency exchange rate update**: Use API to get current currency rate and save it in database. Probably need to use celery task to do it once a while.
-* [ ] **AI Advice / Goals**: "Can I afford to buy this?" logic using the LLM based on user balances and goals.
-* [ ] **Detailed Analytics**: Send dynamically generated charts and PDF reports straight to Telegram.
-* [ ] **Subscription Reminders**: Celery periodic tasks to warn about upcoming payments.
-* [ ] **Dockerization**: Complete `docker-compose.yml` to spin up Django, Redis, Bot, Ollama, and Whisper together easily.
+*   [ ] **💱 Real-time Currency Conversion**: Implement a Celery periodic task to fetch and update exchange rates for accurate multi-currency totals.
+*   [ ] **📅 Recurring Subscriptions**: Expose the existing `Subscriptions` model through the bot for automated recurring expense tracking.
+*   [ ] **🎯 Financial Goals**: Fully implement the "Can I afford this?" feature using the `FinancialGoal` model and AI advice.
+*   [ ] **📈 Advanced Analytics**: Generate dynamic charts (matplotlib/plotly) and PDF reports.
+*   [ ] **🌐 Web Dashboard**: A Next.js or React frontend for more detailed data visualization.
